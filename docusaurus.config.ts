@@ -11,11 +11,11 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://codewithhamza.github.io',
-  baseUrl: '/https://vercel.com/hamza-shakoors-projects-xyz/blabla/',
+  url: 'https://your-vercel-project-url.vercel.app', // Replace with your actual Vercel URL after deployment
+  baseUrl: '/',
 
-  organizationName: 'CodeWithHamza',
-  projectName: 'GIAIC-Q4-Hackathon',
+  organizationName: 'hamzashakoor119',
+  projectName: 'Physical-AI-Humanoid-Robotics-Book-By-CodeWithHamza',
 
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
@@ -31,7 +31,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/CodeWithHamza/GIAIC-Q4-Hackathon/tree/main/',
+          editUrl: 'https://github.com/hamzashakoor119/Physical-AI-Humanoid-Robotics-Book-By-CodeWithHamza/tree/main/',
         },
         blog: {
           showReadingTime: true,
@@ -39,7 +39,7 @@ const config: Config = {
             type: ['rss', 'atom'],
             xslt: true,
           },
-          editUrl: 'https://github.com/CodeWithHamza/GIAIC-Q4-Hackathon/tree/main/',
+          editUrl: 'https://github.com/hamzashakoor119/Physical-AI-Humanoid-Robotics-Book-By-CodeWithHamza/tree/main/',
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
           onUntruncatedBlogPosts: 'warn',
@@ -77,7 +77,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/CodeWithHamza/GIAIC-Q4-Hackathon',
+          href: 'https://github.com/hamzashakoor119/Physical-AI-Humanoid-Robotics-Book-By-CodeWithHamza',
           label: 'GitHub',
           position: 'right',
         },
@@ -125,7 +125,7 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/CodeWithHamza/GIAIC-Q4-Hackathon',
+              href: 'https://github.com/hamzashakoor119/Physical-AI-Humanoid-Robotics-Book-By-CodeWithHamza',
             },
             {
               label: 'GIAIC',
