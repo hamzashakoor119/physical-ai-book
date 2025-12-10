@@ -134,7 +134,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} 📝 Copyright © 2025 CodeWithHamza. All rights reserved.`,
+      copyright: `📝 Copyright © ${new Date().getFullYear()} CodeWithHamza. All rights reserved.`,
     },
     prism: {
       theme: prismThemes.github,
