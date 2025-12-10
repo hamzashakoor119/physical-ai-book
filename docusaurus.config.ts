@@ -62,7 +62,7 @@ const config: Config = {
       title: 'Physical AI Book',
       logo: {
         alt: 'Physical AI Logo',
-        src: 'images/logo.jpg',
+        src: '/img/logo.jpg',
       },
       items: [
         {
