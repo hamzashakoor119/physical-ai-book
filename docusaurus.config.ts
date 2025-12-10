@@ -12,7 +12,7 @@ const config: Config = {
   },
 
   url: 'https://codewithhamza.github.io',
-  baseUrl: 'https://vercel.com/hamza-shakoors-projects-3a5b3b04/physical-ai-humanoid-robotics-book-by-code-with-hamza-yxfx',
+  baseUrl: '/https://vercel.com/hamza-shakoors-projects-xyz/blabla/',
 
   organizationName: 'CodeWithHamza',
   projectName: 'GIAIC-Q4-Hackathon',
