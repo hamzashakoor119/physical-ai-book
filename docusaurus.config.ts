@@ -3,7 +3,7 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Physical AI & Humanoid Robotics',
+  title: 'Physical AI & Humanoid Robotics Book By CodeWithHamza',
   tagline: 'A Comprehensive Textbook for Building Intelligent Embodied Systems',
   favicon: 'img/favicon.ico',
 
@@ -134,7 +134,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} Physical AI & Humanoid Robotics Textbook. Built with Docusaurus.`,
+      copyright: `Copyright ${new Date().getFullYear()} 📝 Copyright © 2025 CodeWithHamza. All rights reserved.`,
     },
     prism: {
       theme: prismThemes.github,
