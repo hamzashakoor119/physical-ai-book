@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 from typing import List, Dict, Any
 from app.utils.embeddings import get_embeddings
 from app.utils.qdrant_client import upsert_vectors
@@ -7,11 +8,18 @@ from qdrant_client import QdrantClient
 import markdown
 from pathlib import Path
 
-def extract_textbook_content(docs_path: str = "../../../docs") -> List[Dict[str, Any]]:
+def extract_textbook_content(docs_path: str = None) -> List[Dict[str, Any]]:
     """
     Extract content from textbook markdown files in the docs directory
     """
     content_chunks = []
+
+    # Default path: from backend/ to ../docs
+    if docs_path is None:
+        # Get the project root (parent of backend)
+        backend_dir = Path(__file__).resolve().parent.parent.parent
+        docs_path = backend_dir.parent / "docs"
+
     docs_dir = Path(docs_path)
 
     # Find all markdown files in the docs directory
@@ -30,15 +38,18 @@ def extract_textbook_content(docs_path: str = "../../../docs") -> List[Dict[str,
 
                 for i, chunk in enumerate(chunks):
                     if chunk.strip():  # Skip empty chunks
+                        # Generate a deterministic UUID based on file and chunk index
+                        chunk_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{md_file.stem}_chunk_{i}"))
                         content_chunks.append({
-                            "id": f"{md_file.stem}_chunk_{i}",
+                            "id": chunk_id,
                             "content": chunk,
                             "source_file": str(md_file.name),
                             "chapter": md_file.stem,
                             "metadata": {
                                 "source_file": str(md_file.name),
                                 "chapter": md_file.stem,
-                                "chunk_index": i
+                                "chunk_index": i,
+                                "chunk_key": f"{md_file.stem}_chunk_{i}"
                             }
                         })
 
@@ -67,9 +78,10 @@ def split_content_into_chunks(content: str, max_chunk_size: int = 500) -> List[s
 
     return chunks
 
-def index_textbook_content(client: QdrantClient, docs_path: str = "../../../docs"):
+def index_textbook_content(client: QdrantClient, docs_path: str = None) -> int:
     """
-    Process textbook content and index it in Qdrant
+    Process textbook content and index it in Qdrant.
+    Returns the number of chunks indexed.
     """
     print("Starting textbook content indexing...")
 
@@ -79,12 +91,19 @@ def index_textbook_content(client: QdrantClient, docs_path: str = "../../../docs
 
     if not content_chunks:
         print("No content found to index")
-        return
+        return 0
 
     # Prepare data for vectorization
     texts = [chunk["content"] for chunk in content_chunks]
     ids = [chunk["id"] for chunk in content_chunks]
-    payloads = [chunk["metadata"] for chunk in content_chunks]
+
+    # Include content in payloads so RAG can retrieve it
+    payloads = []
+    for chunk in content_chunks:
+        payload = chunk["metadata"].copy()
+        payload["content"] = chunk["content"]  # Add content to payload
+        payload["source"] = f"Chapter: {chunk['chapter']}"
+        payloads.append(payload)
 
     # Generate embeddings
     print("Generating embeddings...")
@@ -102,6 +121,7 @@ def index_textbook_content(client: QdrantClient, docs_path: str = "../../../docs
     )
 
     print("Textbook content indexing completed!")
+    return len(content_chunks)
 
 if __name__ == "__main__":
     from app.utils.qdrant_client import get_qdrant_client

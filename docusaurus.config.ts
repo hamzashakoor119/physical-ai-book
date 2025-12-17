@@ -20,6 +20,12 @@ const config: Config = {
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
 
+  // Custom fields for runtime configuration
+  // Set BACKEND_URL environment variable during build for production
+  customFields: {
+    BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:8000/api',
+  },
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],

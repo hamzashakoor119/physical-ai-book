@@ -35,16 +35,29 @@ interface RAGResponse {
   user_background?: UserBackground;
 }
 
+interface TranslationRequest {
+  text: string;
+  target_language: string;
+}
+
+interface TranslationResponse {
+  original_text: string;
+  translated_text: string;
+  target_language: string;
+}
+
 interface ChatWidgetProps {
   apiEndpoint?: string;
 }
 
-export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): JSX.Element {
+export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [selectedText, setSelectedText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState<'en' | 'ur'>('en');
+  const [strictMode, setStrictMode] = useState(false); // Strict selection mode: answer ONLY from selected text
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Default user background (in a real app, this would come from user profile)
@@ -54,6 +67,14 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): JSX.Elemen
     robotics_knowledge: 'basic',
     preferred_language: 'en'
   });
+
+  // Update user background when language preference changes
+  useEffect(() => {
+    setUserBackground(prev => ({
+      ...prev,
+      preferred_language: preferredLanguage
+    }));
+  }, [preferredLanguage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -134,6 +155,70 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): JSX.Elemen
     }
   };
 
+  // Strict selection mode API - answers ONLY from selected text (no Qdrant search)
+  const callStrictSelectionAPI = async (selection: TextSelection) => {
+    try {
+      const response = await fetch(`${apiEndpoint || '/api'}/rag/answer-from-selection`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selected_text: selection.selected_text,
+          question: selection.question,
+          user_background: selection.user_background
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        question: data.question,
+        answer: data.answer,
+        context: [data.selected_text],
+        sources: data.sources || ['User-selected text'],
+        user_background: data.user_background
+      } as RAGResponse;
+    } catch (error) {
+      console.error('Error calling strict selection API:', error);
+      return {
+        question: selection.question,
+        answer: `I'm having trouble connecting to the backend. Please check that the server is running. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        context: [],
+        sources: [],
+        user_background: selection.user_background
+      };
+    }
+  };
+
+  const translateText = async (text: string, targetLanguage: string): Promise<string> => {
+    try {
+      const response = await fetch(`${apiEndpoint || '/api'}/translate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: text,
+          target_language: targetLanguage
+        } as TranslationRequest),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: TranslationResponse = await response.json();
+      return data.translated_text;
+    } catch (error) {
+      console.error('Error calling translation API:', error);
+      return text; // Return original text if translation fails
+    }
+  };
+
   const sendMessage = async (query: string, isSelectionQuery: boolean = false) => {
     if (!query.trim() || isLoading) return;
 
@@ -147,14 +232,20 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): JSX.Elemen
       let response: RAGResponse;
 
       if (isSelectionQuery && selectedText) {
-        // Call selection-based RAG API
+        // Build selection query
         const selectionQuery: TextSelection = {
           selected_text: selectedText,
           question: query,
           user_background: userBackground,
           top_k: 3
         };
-        response = await callSelectionAPI(selectionQuery);
+
+        // Use strict mode (answer ONLY from selection) or enhanced mode (with Qdrant search)
+        if (strictMode) {
+          response = await callStrictSelectionAPI(selectionQuery);
+        } else {
+          response = await callSelectionAPI(selectionQuery);
+        }
       } else {
         // Call general RAG API
         const ragQuery: RAGQuery = {
@@ -165,7 +256,13 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): JSX.Elemen
         response = await callBackendAPI(ragQuery);
       }
 
-      const assistantMessage: Message = { role: 'assistant', content: response.answer };
+      // If preferred language is Urdu, translate the response
+      let finalAnswer = response.answer;
+      if (preferredLanguage === 'ur') {
+        finalAnswer = await translateText(response.answer, 'ur');
+      }
+
+      const assistantMessage: Message = { role: 'assistant', content: finalAnswer };
       setMessages(prev => [...prev, assistantMessage]);
       setSelectedText('');
     } catch (error) {
@@ -189,6 +286,11 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): JSX.Elemen
       e.preventDefault();
       sendMessage(input, selectedText.length > 0);
     }
+  };
+
+  const toggleLanguage = () => {
+    const newLanguage = preferredLanguage === 'en' ? 'ur' : 'en';
+    setPreferredLanguage(newLanguage as 'en' | 'ur');
   };
 
   return (
@@ -217,13 +319,39 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): JSX.Elemen
           <div className={styles.chatHeader}>
             <h3>Physical AI Assistant</h3>
             <span className={styles.subtitle}>Ask questions about the textbook</span>
+            <div className={styles.languageToggle}>
+              <button
+                className={`${styles.langButton} ${preferredLanguage === 'en' ? styles.activeLang : ''}`}
+                onClick={() => setPreferredLanguage('en')}
+                title="Switch to English"
+              >
+                EN
+              </button>
+              <button
+                className={`${styles.langButton} ${preferredLanguage === 'ur' ? styles.activeLang : ''}`}
+                onClick={() => setPreferredLanguage('ur')}
+                title="Switch to Urdu"
+              >
+                UR
+              </button>
+            </div>
           </div>
 
           {/* Selected Text Indicator */}
           {selectedText && (
             <div className={styles.selectedTextBanner}>
-              <span>Selected: "{selectedText.slice(0, 50)}..."</span>
-              <button onClick={() => setSelectedText('')}>Clear</button>
+              <span>Selected: "{selectedText.slice(0, 50)}{selectedText.length > 50 ? '...' : ''}"</span>
+              <div className={styles.selectionControls}>
+                <label className={styles.strictModeToggle} title="Strict mode: Answer ONLY from selected text">
+                  <input
+                    type="checkbox"
+                    checked={strictMode}
+                    onChange={(e) => setStrictMode(e.target.checked)}
+                  />
+                  <span className={styles.toggleLabel}>Strict</span>
+                </label>
+                <button onClick={() => setSelectedText('')}>Clear</button>
+              </div>
             </div>
           )}
 
