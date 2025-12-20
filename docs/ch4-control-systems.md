@@ -1785,6 +1785,6 @@ With sensors (Ch. 2), actuators (Ch. 3), and control (Ch. 4), you now understand
 
 ---
 
-*Previous: [Chapter 3: Actuators in Physical AI](./03-actuators.md)*
+*Previous: [Chapter 3: Actuators in Physical AI](./ch3-actuators.md)*
 
-*Next: [Chapter 5: ROS 2 Fundamentals](./05-ros2-fundamentals.md)*
+*Next: [Chapter 5: ROS 2 Fundamentals](./ch5-ros2-fundamentals.md)*

@@ -101,11 +101,11 @@ const config: Config = {
             },
             {
               label: 'Sensors',
-              to: '/docs/ch2-sensors',
+              to: '/docs/ch2-sensors-physical-ai',
             },
             {
               label: 'Actuators',
-              to: '/docs/ch3-actuators',
+              to: '/docs/ch3-actuators-physical-ai',
             },
           ],
         },

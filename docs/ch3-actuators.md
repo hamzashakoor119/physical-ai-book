@@ -2012,6 +2012,6 @@ With sensing (Chapter 2), actuation (Chapter 3), and control (Chapter 4), you'll
 
 ---
 
-*Previous: [Chapter 2: Sensors in Physical AI](./02-sensors.md)*
+*Previous: [Chapter 2: Sensors in Physical AI](./ch2-sensors.md)*
 
-*Next: [Chapter 4: Control Systems](./04-control-systems.md)*
+*Next: [Chapter 4: Control Systems](./ch4-control-systems.md)*
