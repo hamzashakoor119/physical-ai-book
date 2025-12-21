@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './styles.module.css';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  isStreaming?: boolean;
 }
 
 interface UserBackground {
@@ -11,39 +12,6 @@ interface UserBackground {
   hardware_experience?: string;
   robotics_knowledge?: string;
   preferred_language?: string;
-}
-
-interface RAGQuery {
-  question: string;
-  user_background?: UserBackground;
-  top_k?: number;
-  context_window?: number;
-}
-
-interface TextSelection {
-  selected_text: string;
-  question: string;
-  user_background?: UserBackground;
-  top_k?: number;
-}
-
-interface RAGResponse {
-  question: string;
-  answer: string;
-  context: string[];
-  sources: string[];
-  user_background?: UserBackground;
-}
-
-interface TranslationRequest {
-  text: string;
-  target_language: string;
-}
-
-interface TranslationResponse {
-  original_text: string;
-  translated_text: string;
-  target_language: string;
 }
 
 interface ChatWidgetProps {
@@ -56,11 +24,14 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
   const [input, setInput] = useState('');
   const [selectedText, setSelectedText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [preferredLanguage, setPreferredLanguage] = useState<'en' | 'ur'>('en');
-  const [strictMode, setStrictMode] = useState(false); // Strict selection mode: answer ONLY from selected text
+  const [strictMode, setStrictMode] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [useStreaming, setUseStreaming] = useState(true); // Enable streaming by default
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Default user background (in a real app, this would come from user profile)
   const [userBackground, setUserBackground] = useState<UserBackground>({
     software_experience: 'beginner',
     hardware_experience: 'beginner',
@@ -68,7 +39,6 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
     preferred_language: 'en'
   });
 
-  // Update user background when language preference changes
   useEffect(() => {
     setUserBackground(prev => ({
       ...prev,
@@ -76,13 +46,13 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
     }));
   }, [preferredLanguage]);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
   // Listen for text selection
   useEffect(() => {
@@ -97,130 +67,203 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
     return () => document.removeEventListener('mouseup', handleSelection);
   }, []);
 
-  const callBackendAPI = async (query: RAGQuery) => {
-    try {
-      const response = await fetch(`${apiEndpoint || '/api'}/rag/query`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(query),
-      });
+  // Streaming chat using SSE
+  const sendStreamingMessage = async (query: string) => {
+    const baseUrl = apiEndpoint || '/api';
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data: RAGResponse = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error calling backend API:', error);
-      // Return a fallback response
-      return {
-        question: query.question,
-        answer: `I'm having trouble connecting to the backend. Please check that the server is running. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        context: [],
-        sources: [],
-        user_background: query.user_background
-      };
+    // Cancel any ongoing stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
-  };
+    abortControllerRef.current = new AbortController();
 
-  const callSelectionAPI = async (selection: TextSelection) => {
     try {
-      const response = await fetch(`${apiEndpoint || '/api'}/rag/selection-query`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(selection),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data: RAGResponse = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error calling selection API:', error);
-      // Return a fallback response
-      return {
-        question: selection.question,
-        answer: `I'm having trouble connecting to the backend. Please check that the server is running. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        context: [],
-        sources: [],
-        user_background: selection.user_background
-      };
-    }
-  };
-
-  // Strict selection mode API - answers ONLY from selected text (no Qdrant search)
-  const callStrictSelectionAPI = async (selection: TextSelection) => {
-    try {
-      const response = await fetch(`${apiEndpoint || '/api'}/rag/answer-from-selection`, {
+      const response = await fetch(`${baseUrl}/rag/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          selected_text: selection.selected_text,
-          question: selection.question,
-          user_background: selection.user_background
+          message: query,
+          session_id: sessionId,
+          user_background: userBackground,
+          top_k: 3
         }),
+        signal: abortControllerRef.current.signal
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      const decoder = new TextDecoder();
+      let assistantMessage = '';
+      let messageIndex = -1;
+
+      // Add empty assistant message that will be updated
+      setMessages(prev => {
+        messageIndex = prev.length;
+        return [...prev, { role: 'assistant', content: '', isStreaming: true }];
+      });
+
+      setIsStreaming(true);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === 'session') {
+                setSessionId(data.session_id);
+              } else if (data.type === 'token') {
+                assistantMessage += data.content;
+                setMessages(prev => {
+                  const updated = [...prev];
+                  if (updated[messageIndex]) {
+                    updated[messageIndex] = {
+                      role: 'assistant',
+                      content: assistantMessage,
+                      isStreaming: true
+                    };
+                  }
+                  return updated;
+                });
+              } else if (data.type === 'content') {
+                // Full content (for greetings, etc.)
+                assistantMessage = data.content;
+                setMessages(prev => {
+                  const updated = [...prev];
+                  if (updated[messageIndex]) {
+                    updated[messageIndex] = {
+                      role: 'assistant',
+                      content: assistantMessage,
+                      isStreaming: false
+                    };
+                  }
+                  return updated;
+                });
+              } else if (data.type === 'done') {
+                setMessages(prev => {
+                  const updated = [...prev];
+                  if (updated[messageIndex]) {
+                    updated[messageIndex] = {
+                      ...updated[messageIndex],
+                      isStreaming: false
+                    };
+                  }
+                  return updated;
+                });
+              } else if (data.type === 'error') {
+                setMessages(prev => {
+                  const updated = [...prev];
+                  if (updated[messageIndex]) {
+                    updated[messageIndex] = {
+                      role: 'assistant',
+                      content: `Error: ${data.message}`,
+                      isStreaming: false
+                    };
+                  }
+                  return updated;
+                });
+              }
+            } catch (e) {
+              // Ignore parse errors for incomplete chunks
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        return; // User cancelled
+      }
+      console.error('Streaming error:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Connection failed'}. Falling back to non-streaming mode.`,
+        isStreaming: false
+      }]);
+    } finally {
+      setIsStreaming(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  // Legacy non-streaming chat
+  const sendNonStreamingMessage = async (query: string, isSelectionQuery: boolean = false) => {
+    const baseUrl = apiEndpoint || '/api';
+
+    try {
+      let response;
+
+      if (isSelectionQuery && selectedText) {
+        if (strictMode) {
+          response = await fetch(`${baseUrl}/rag/answer-from-selection`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              selected_text: selectedText,
+              question: query,
+              user_background: userBackground
+            }),
+          });
+        } else {
+          response = await fetch(`${baseUrl}/rag/selection-query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              selected_text: selectedText,
+              question: query,
+              user_background: userBackground,
+              top_k: 3
+            }),
+          });
+        }
+      } else {
+        // Use new smart chat endpoint
+        response = await fetch(`${baseUrl}/rag/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: query,
+            session_id: sessionId,
+            user_background: userBackground,
+            top_k: 3
+          }),
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      return {
-        question: data.question,
-        answer: data.answer,
-        context: [data.selected_text],
-        sources: data.sources || ['User-selected text'],
-        user_background: data.user_background
-      } as RAGResponse;
-    } catch (error) {
-      console.error('Error calling strict selection API:', error);
-      return {
-        question: selection.question,
-        answer: `I'm having trouble connecting to the backend. Please check that the server is running. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        context: [],
-        sources: [],
-        user_background: selection.user_background
-      };
-    }
-  };
 
-  const translateText = async (text: string, targetLanguage: string): Promise<string> => {
-    try {
-      const response = await fetch(`${apiEndpoint || '/api'}/translate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: text,
-          target_language: targetLanguage
-        } as TranslationRequest),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Update session ID if returned
+      if (data.session_id) {
+        setSessionId(data.session_id);
       }
 
-      const data: TranslationResponse = await response.json();
-      return data.translated_text;
+      return data.message || data.answer || 'No response received';
     } catch (error) {
-      console.error('Error calling translation API:', error);
-      return text; // Return original text if translation fails
+      console.error('Error calling backend API:', error);
+      return `I'm having trouble connecting to the backend. Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   };
 
   const sendMessage = async (query: string, isSelectionQuery: boolean = false) => {
-    if (!query.trim() || isLoading) return;
+    if (!query.trim() || isLoading || isStreaming) return;
 
     setIsLoading(true);
 
@@ -229,41 +272,15 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
     setInput('');
 
     try {
-      let response: RAGResponse;
-
-      if (isSelectionQuery && selectedText) {
-        // Build selection query
-        const selectionQuery: TextSelection = {
-          selected_text: selectedText,
-          question: query,
-          user_background: userBackground,
-          top_k: 3
-        };
-
-        // Use strict mode (answer ONLY from selection) or enhanced mode (with Qdrant search)
-        if (strictMode) {
-          response = await callStrictSelectionAPI(selectionQuery);
-        } else {
-          response = await callSelectionAPI(selectionQuery);
-        }
+      // Use streaming for non-selection queries when enabled
+      if (useStreaming && !isSelectionQuery) {
+        await sendStreamingMessage(query);
       } else {
-        // Call general RAG API
-        const ragQuery: RAGQuery = {
-          question: query,
-          user_background: userBackground,
-          top_k: 5
-        };
-        response = await callBackendAPI(ragQuery);
+        const response = await sendNonStreamingMessage(query, isSelectionQuery);
+        const assistantMessage: Message = { role: 'assistant', content: response };
+        setMessages(prev => [...prev, assistantMessage]);
       }
 
-      // If preferred language is Urdu, translate the response
-      let finalAnswer = response.answer;
-      if (preferredLanguage === 'ur') {
-        finalAnswer = await translateText(response.answer, 'ur');
-      }
-
-      const assistantMessage: Message = { role: 'assistant', content: finalAnswer };
-      setMessages(prev => [...prev, assistantMessage]);
       setSelectedText('');
     } catch (error) {
       const errorMessage: Message = {
@@ -288,9 +305,11 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
     }
   };
 
-  const toggleLanguage = () => {
-    const newLanguage = preferredLanguage === 'en' ? 'ur' : 'en';
-    setPreferredLanguage(newLanguage as 'en' | 'ur');
+  const stopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsStreaming(false);
+    }
   };
 
   return (
@@ -319,20 +338,29 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
           <div className={styles.chatHeader}>
             <h3>Physical AI Assistant</h3>
             <span className={styles.subtitle}>Ask questions about the textbook</span>
-            <div className={styles.languageToggle}>
+            <div className={styles.headerControls}>
+              <div className={styles.languageToggle}>
+                <button
+                  className={`${styles.langButton} ${preferredLanguage === 'en' ? styles.activeLang : ''}`}
+                  onClick={() => setPreferredLanguage('en')}
+                  title="Switch to English"
+                >
+                  EN
+                </button>
+                <button
+                  className={`${styles.langButton} ${preferredLanguage === 'ur' ? styles.activeLang : ''}`}
+                  onClick={() => setPreferredLanguage('ur')}
+                  title="Switch to Urdu"
+                >
+                  UR
+                </button>
+              </div>
               <button
-                className={`${styles.langButton} ${preferredLanguage === 'en' ? styles.activeLang : ''}`}
-                onClick={() => setPreferredLanguage('en')}
-                title="Switch to English"
+                className={`${styles.streamToggle} ${useStreaming ? styles.activeStream : ''}`}
+                onClick={() => setUseStreaming(!useStreaming)}
+                title={useStreaming ? 'Streaming enabled (faster)' : 'Streaming disabled'}
               >
-                EN
-              </button>
-              <button
-                className={`${styles.langButton} ${preferredLanguage === 'ur' ? styles.activeLang : ''}`}
-                onClick={() => setPreferredLanguage('ur')}
-                title="Switch to Urdu"
-              >
-                UR
+                {useStreaming ? '⚡' : '📄'}
               </button>
             </div>
           </div>
@@ -358,24 +386,32 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
           <div className={styles.messagesContainer}>
             {messages.length === 0 && (
               <div className={styles.welcomeMessage}>
-                <p>Welcome! Ask me anything about Physical AI and Humanoid Robotics.</p>
-                <p className={styles.tip}>Tip: Select text on the page, then ask a question about it!</p>
+                <p>Welcome! I'm the Physical AI & Humanoid Robotics Book Assistant.</p>
+                <p className={styles.tip}>Say "Hi" to get started, or ask any question!</p>
               </div>
             )}
             {messages.map((msg, idx) => (
               <div
                 key={idx}
-                className={`${styles.message} ${msg.role === 'user' ? styles.userMessage : styles.assistantMessage}`}
+                className={`${styles.message} ${msg.role === 'user' ? styles.userMessage : styles.assistantMessage} ${msg.isStreaming ? styles.streaming : ''}`}
               >
-                {msg.content}
+                {msg.content || (msg.isStreaming && (
+                  <span className={styles.cursor}>▌</span>
+                ))}
+                {msg.isStreaming && msg.content && (
+                  <span className={styles.cursor}>▌</span>
+                )}
               </div>
             ))}
-            {isLoading && (
+            {isLoading && !isStreaming && (
               <div className={styles.message + ' ' + styles.assistantMessage}>
                 <div className={styles.typingIndicator}>
-                  <div className={styles.dot}></div>
-                  <div className={styles.dot}></div>
-                  <div className={styles.dot}></div>
+                  <span>Thinking</span>
+                  <div className={styles.dots}>
+                    <div className={styles.dot}></div>
+                    <div className={styles.dot}></div>
+                    <div className={styles.dot}></div>
+                  </div>
                 </div>
               </div>
             )}
@@ -388,22 +424,30 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={selectedText ? "Ask about selected text..." : "Ask a question..."}
+              placeholder={selectedText ? "Ask about selected text..." : "Say hi or ask a question..."}
               className={styles.input}
-              disabled={isLoading}
+              disabled={isLoading || isStreaming}
             />
-            <button type="submit" disabled={!input.trim() || isLoading} className={styles.sendButton}>
-              {isLoading ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" strokeDasharray="15.7 15.7"></circle>
+            {isStreaming ? (
+              <button type="button" onClick={stopStreaming} className={styles.stopButton} title="Stop generating">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
                 </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-              )}
-            </button>
+              </button>
+            ) : (
+              <button type="submit" disabled={!input.trim() || isLoading} className={styles.sendButton}>
+                {isLoading ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={styles.spinner}>
+                    <circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4" strokeLinecap="round"></circle>
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                )}
+              </button>
+            )}
           </form>
         </div>
       )}

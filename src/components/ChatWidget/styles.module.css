@@ -60,10 +60,35 @@
   opacity: 0.9;
 }
 
+.headerControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .languageToggle {
   display: flex;
   gap: 4px;
-  margin-top: 8px;
+}
+
+.streamToggle {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.streamToggle:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.streamToggle.activeStream {
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .langButton {
@@ -190,15 +215,42 @@
   color: #e0e0e0;
 }
 
+.streaming {
+  border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+.cursor {
+  display: inline-block;
+  animation: blink 1s infinite;
+  color: #667eea;
+  font-weight: bold;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
 .typingIndicator {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
   padding: 4px 0;
 }
 
+.typingIndicator span {
+  font-size: 13px;
+  color: var(--ifm-color-emphasis-500, #888);
+}
+
+.typingIndicator .dots {
+  display: flex;
+  gap: 4px;
+}
+
 .typingIndicator .dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--ifm-color-emphasis-400, #999);
   animation: typing 1.4s infinite ease-in-out both;
@@ -273,6 +325,34 @@
 .sendButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.stopButton {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: all 0.2s;
+}
+
+.stopButton:hover {
+  background: #dc2626;
+  transform: scale(1.05);
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 480px) {

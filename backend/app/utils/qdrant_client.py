@@ -2,41 +2,62 @@ import os
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Qdrant client
-def get_qdrant_client():
+# Singleton Qdrant client instance
+_qdrant_client: Optional[QdrantClient] = None
+_client_initialized: bool = False
+
+def get_qdrant_client() -> QdrantClient:
     """
-    Initialize and return a Qdrant client instance
+    Get or initialize a singleton Qdrant client instance.
+    Reuses the same connection to reduce latency.
     """
+    global _qdrant_client, _client_initialized
+
+    if _qdrant_client is not None and _client_initialized:
+        return _qdrant_client
+
     try:
         # Use local Qdrant instance by default, or cloud if URL is provided
         qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
 
         if qdrant_api_key:
-            client = QdrantClient(
+            _qdrant_client = QdrantClient(
                 url=qdrant_url,
-                api_key=qdrant_api_key
+                api_key=qdrant_api_key,
+                timeout=30  # 30 second timeout
             )
         else:
             # For local instance without authentication
-            client = QdrantClient(
-                url=qdrant_url
+            _qdrant_client = QdrantClient(
+                url=qdrant_url,
+                timeout=30
             )
 
         # Ensure the collection exists
-        ensure_collection_exists(client)
+        ensure_collection_exists(_qdrant_client)
+        _client_initialized = True
 
-        return client
+        print("Qdrant client initialized (singleton)")
+        return _qdrant_client
     except Exception as e:
         print(f"Error initializing Qdrant client: {str(e)}")
         # Return a mock client for testing purposes
-        return MockQdrantClient()
+        _qdrant_client = MockQdrantClient()
+        _client_initialized = True
+        return _qdrant_client
+
+def reset_qdrant_client() -> None:
+    """Reset the singleton client (useful for testing or reconnection)."""
+    global _qdrant_client, _client_initialized
+    _qdrant_client = None
+    _client_initialized = False
 
 def ensure_collection_exists(client: QdrantClient, collection_name: str = "textbook_content"):
     """
