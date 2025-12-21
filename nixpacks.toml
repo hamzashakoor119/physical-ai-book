@@ -9,9 +9,10 @@ cmds = [
   "cd backend && pip install --break-system-packages -r requirements.txt"
 ]
 
+# IMPORTANT: build phase override, warna Nixpacks dobara pip install -r (without flag) chalata rahega
 [phases.build]
 cmds = [
-  "echo 'Build done'"
+  "cd backend && pip install --break-system-packages -r requirements.txt"
 ]
 
 [start]
