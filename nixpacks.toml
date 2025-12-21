@@ -1,8 +1,18 @@
+# nixpacks.toml (root)
+
 [phases.setup]
 nixPkgs = ["nodejs_22", "python3", "python3Packages.pip"]
 
 [phases.install]
-cmds = ["npm ci", "cd backend && pip install -r requirements.txt"]
+cmds = [
+  "npm ci",
+  "cd backend && pip install --break-system-packages -r requirements.txt"
+]
+
+[phases.build]
+cmds = [
+  "echo 'Build done'"
+]
 
 [start]
 cmd = "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
