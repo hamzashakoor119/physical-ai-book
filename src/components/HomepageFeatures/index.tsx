@@ -9,6 +9,12 @@ type FeatureItem = {
   description: ReactNode;
 };
 
+type HomepageFeaturesProps = {
+  backendUrl?: string;
+  backendHealth?: {status?: string} | null;
+  backendError?: string | null;
+};
+
 const FeatureList: FeatureItem[] = [
   {
     title: 'Comprehensive Curriculum',
@@ -56,10 +62,64 @@ function Feature({title, Svg, description}: FeatureItem) {
   );
 }
 
-export default function HomepageFeatures(): ReactNode {
+function BackendStatusPill({
+  backendUrl,
+  backendHealth,
+  backendError,
+}: HomepageFeaturesProps) {
+  const connected = backendHealth?.status === 'OK';
+
+  return (
+    <div style={{display: 'flex', justifyContent: 'center', marginBottom: 16}}>
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 12px',
+          borderRadius: 999,
+          border: '1px solid rgba(0,0,0,0.12)',
+          background: 'rgba(255,255,255,0.75)',
+          backdropFilter: 'blur(6px)',
+          fontSize: 13,
+        }}>
+        <span style={{fontWeight: 600}}>Backend:</span>
+        {connected ? (
+          <span>Connected ✅</span>
+        ) : backendError ? (
+          <span title={backendError}>Not reachable ❌</span>
+        ) : (
+          <span>Checking…</span>
+        )}
+
+        {backendUrl ? (
+          <a
+            href={`${backendUrl}/api/health`}
+            target="_blank"
+            rel="noreferrer"
+            style={{marginLeft: 8, textDecoration: 'underline'}}>
+            /api/health
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export default function HomepageFeatures({
+  backendUrl,
+  backendHealth,
+  backendError,
+}: HomepageFeaturesProps): ReactNode {
   return (
     <section className={styles.features}>
       <div className="container">
+        <BackendStatusPill
+          backendUrl={backendUrl}
+          backendHealth={backendHealth}
+          backendError={backendError}
+        />
+
         <div className="row">
           {FeatureList.map((props, idx) => (
             <Feature key={idx} {...props} />
