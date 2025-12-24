@@ -69,7 +69,7 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
 
   // Streaming chat using SSE
   const sendStreamingMessage = async (query: string) => {
-    const baseUrl = apiEndpoint || '/api';
+    const baseUrl = apiEndpoint || `${process.env.BACKEND_URL}/api`;
 
     // Cancel any ongoing stream
     if (abortControllerRef.current) {
