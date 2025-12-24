@@ -202,7 +202,7 @@ export default function ChatWidget({ apiEndpoint }: ChatWidgetProps): React.Reac
 
   // Legacy non-streaming chat
   const sendNonStreamingMessage = async (query: string, isSelectionQuery: boolean = false) => {
-    const baseUrl = apiEndpoint || '/api';
+    const baseUrl = apiEndpoint || `${process.env.BACKEND_URL}/api`;
 
     try {
       let response;
